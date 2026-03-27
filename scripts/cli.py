@@ -144,12 +144,15 @@ def _connect(args: argparse.Namespace):
     优先复用上次命令留下的 tab（通过端口隔离的 session tab 文件记录），
     避免每次命令都新建 tab 导致 Chrome 中 tab 堆积。
     """
-    from chrome_launcher import ensure_chrome, has_display
+    from chrome_launcher import ensure_chrome, has_display, is_port_open, restart_chrome
     from xhs.cdp import Browser
 
     user_data_dir = _resolve_account(args)
 
     headless = getattr(args, "headless", False) or not has_display()
+    # 若请求无头模式但 Chrome 已以有窗口模式运行，则重启为无头模式
+    if headless and is_port_open(args.port):
+        restart_chrome(port=args.port, headless=True, user_data_dir=user_data_dir)
     if not ensure_chrome(port=args.port, headless=headless, user_data_dir=user_data_dir):
         _output(
             {"success": False, "error": "无法启动 Chrome，请检查 Chrome 是否已安装"},
@@ -737,6 +740,8 @@ def cmd_search_and_fetch(args: argparse.Namespace) -> None:
     from xhs.search import search_feeds
     from xhs.types import FilterOption
 
+    args.headless = True  # 探索命令始终无头运行
+
     filter_opt = FilterOption(
         sort_by=args.sort_by or "",
         note_type=args.note_type or "",
@@ -781,6 +786,7 @@ def cmd_list_and_fetch(args: argparse.Namespace) -> None:
     from xhs.feeds import list_feeds
     from xhs.parallel_fetch import _log_progress, batch_get_details
 
+    args.headless = True  # 探索命令始终无头运行
     _log_progress("[list] 获取首页推荐...")
 
     output_dir = _resolve_output_dir()
@@ -1261,13 +1267,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--publish-time", help="时间: 不限|一天内|一周内|半年内")
     sub.add_argument("--search-scope", help="范围: 不限|已看过|未看过|已关注")
     sub.add_argument("--location", help="位置: 不限|同城|附近")
-    sub.add_argument("--headless", action="store_true", help="无头模式（不弹出浏览器窗口）")
     sub.set_defaults(func=cmd_search_and_fetch)
 
     # list-and-fetch（首页推荐 + 批量获取详情）
     sub = subparsers.add_parser("list-and-fetch", help="获取首页推荐并批量获取前 N 条详情")
     sub.add_argument("--top-n", type=int, default=5, help="获取前 N 条详情 (default: 5)")
-    sub.add_argument("--headless", action="store_true", help="无头模式（不弹出浏览器窗口）")
     sub.set_defaults(func=cmd_list_and_fetch)
 
     # post-comment
