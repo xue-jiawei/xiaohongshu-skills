@@ -15,6 +15,7 @@ import os
 import sys
 import tempfile
 
+
 def _session_tab_file(port: int) -> str:
     """返回指定端口的 session tab 文件路径（每账号独立隔离）。"""
     return os.path.join(tempfile.gettempdir(), "xhs", f"session_tab_{port}.txt")
@@ -61,6 +62,7 @@ def _load_session_tab(port: int) -> str | None:
 def _clear_session_tab(port: int) -> None:
     with contextlib.suppress(FileNotFoundError):
         os.remove(_session_tab_file(port))
+
 
 # Windows 控制台默认编码（如 cp1252）不支持中文，强制 UTF-8
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -251,6 +253,7 @@ def _headless_fallback(port: int) -> None:
             exit_code=1,
         )
 
+
 def _qrcode_fallback(browser, page, args: argparse.Namespace) -> None:
     """频率限制时刷新页面返回二维码，让 AI 直接展示给用户扫码。"""
     from xhs.login import (
@@ -284,8 +287,7 @@ def _qrcode_fallback(browser, page, args: argparse.Namespace) -> None:
         "qrcode_path": qrcode_path,
         "qrcode_image_url": image_url,
         "message": (
-            "验证码发送受限，已切换为二维码登录，请扫码。"
-            "扫码后运行 wait-login 等待登录结果。"
+            "验证码发送受限，已切换为二维码登录，请扫码。扫码后运行 wait-login 等待登录结果。"
         ),
     }
     if login_url:
@@ -335,10 +337,7 @@ def cmd_check_login(args: argparse.Namespace) -> None:
             result["qr_login_url"] = login_url
         if has_display():
             result["login_method"] = "qrcode"
-            result["hint"] = (
-                "未登录，二维码已自动生成。"
-                "扫码后运行 wait-login 等待登录结果"
-            )
+            result["hint"] = "未登录，二维码已自动生成。扫码后运行 wait-login 等待登录结果"
         else:
             result["login_method"] = "both"
             result["hint"] = (
@@ -408,10 +407,7 @@ def cmd_phone_login(args: argparse.Namespace) -> None:
             json.dumps(
                 {
                     "status": "code_sent",
-                    "message": (
-                        f"验证码已发送至 "
-                        f"{args.phone[:3]}****{args.phone[-4:]}"
-                    ),
+                    "message": (f"验证码已发送至 {args.phone[:3]}****{args.phone[-4:]}"),
                 },
                 ensure_ascii=False,
             ),
@@ -489,8 +485,7 @@ def cmd_get_qrcode(args: argparse.Namespace) -> None:
     result: dict = {
         "qrcode_path": qrcode_path,
         "qrcode_image_url": image_url,
-        "message": "二维码已生成，请扫码登录。"
-        "扫码后运行 wait-login 等待登录结果。",
+        "message": "二维码已生成，请扫码登录。扫码后运行 wait-login 等待登录结果。",
     }
     if login_url:
         result["qr_login_url"] = login_url
@@ -513,7 +508,9 @@ def cmd_wait_login(args: argparse.Namespace) -> None:
         _output(
             {
                 "logged_in": success,
-                "message": "登录成功" if success else "等待超时，请重新运行 get-qrcode 获取新二维码",
+                "message": "登录成功"
+                if success
+                else "等待超时，请重新运行 get-qrcode 获取新二维码",
             },
             exit_code=0 if success else 2,
         )
@@ -540,13 +537,15 @@ def cmd_send_code(args: argparse.Namespace) -> None:
         _save_login_tab(page.target_id, args.port)
         # 清除 session tab 引用——隔离登录表单，防止其他命令复用并关闭/导航该 tab
         _clear_session_tab(args.port)
-        _output({
-            "status": "code_sent",
-            "message": (
-                f"验证码已发送至 {args.phone[:3]}****{args.phone[-4:]}，"
-                "请运行 verify-code --code <验证码>"
-            ),
-        })
+        _output(
+            {
+                "status": "code_sent",
+                "message": (
+                    f"验证码已发送至 {args.phone[:3]}****{args.phone[-4:]}，"
+                    "请运行 verify-code --code <验证码>"
+                ),
+            }
+        )
     except RateLimitError:
         # 频率限制——直接切换二维码登录
         logger.info("验证码发送受限，切换为二维码登录")
@@ -669,6 +668,123 @@ def cmd_user_profile(args: argparse.Namespace) -> None:
         _output(profile.to_dict())
     finally:
         browser.close_page(page)
+        browser.close()
+
+
+def _write_fetch_results(
+    feeds: list,
+    details: list,
+    output_dir: str,
+    source: str,
+) -> None:
+    """将搜索/列表结果和详情写入 output_dir，输出 manifest。"""
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 写入搜索/列表结果概要
+    summary_path = os.path.join(output_dir, f"{source}_results.json")
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {"feeds": [fd.to_dict() for fd in feeds], "count": len(feeds)},
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    # 写入各笔记详情
+    detail_files: list[dict] = []
+    for feed, detail in zip(feeds, details, strict=True):
+        if detail is None:
+            detail_files.append(
+                {"feed_id": feed.id, "title": feed.note_card.display_title, "file": None}
+            )
+            continue
+        fname = f"feed_{feed.id}.json"
+        fpath = os.path.join(output_dir, fname)
+        with open(fpath, "w", encoding="utf-8") as f:
+            json.dump(detail.to_dict(), f, ensure_ascii=False, indent=2)
+        detail_files.append(
+            {"feed_id": feed.id, "title": feed.note_card.display_title, "file": fname}
+        )
+
+    # 写入 manifest
+    manifest = {
+        "source": source,
+        "total_feeds": len(feeds),
+        "fetched_details": sum(1 for d in details if d is not None),
+        "output_dir": output_dir,
+        "summary_file": f"{source}_results.json",
+        "details": detail_files,
+    }
+    manifest_path = os.path.join(output_dir, "manifest.json")
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+    _output(manifest)
+
+
+def cmd_search_and_fetch(args: argparse.Namespace) -> None:
+    """搜索笔记并批量获取前 N 条详情。"""
+    from xhs.parallel_fetch import _log_progress, batch_get_details
+    from xhs.search import search_feeds
+    from xhs.types import FilterOption
+
+    filter_opt = FilterOption(
+        sort_by=args.sort_by or "",
+        note_type=args.note_type or "",
+        publish_time=args.publish_time or "",
+        search_scope=args.search_scope or "",
+        location=args.location or "",
+    )
+
+    filters_desc = ", ".join(
+        f"{k}={v}"
+        for k, v in [
+            ("排序", args.sort_by),
+            ("类型", args.note_type),
+            ("时间", args.publish_time),
+        ]
+        if v
+    )
+    _log_progress(
+        f'[search] 搜索关键词: "{args.keyword}"' + (f" ({filters_desc})" if filters_desc else "")
+    )
+
+    browser, page = _connect(args)
+    try:
+        feeds = search_feeds(page, args.keyword, filter_opt)
+        browser.close_page(page)
+
+        top_n = min(args.top_n, len(feeds))
+        selected = feeds[:top_n]
+        _log_progress(f"[search] 找到 {len(feeds)} 条结果，获取前 {top_n} 条详情...")
+
+        details = batch_get_details(browser, selected)
+        _log_progress(f"[done] 结果已写入 {args.output_dir}")
+        _write_fetch_results(selected, details, args.output_dir, "search")
+    finally:
+        browser.close()
+
+
+def cmd_list_and_fetch(args: argparse.Namespace) -> None:
+    """获取首页 Feed 并批量获取前 N 条详情。"""
+    from xhs.feeds import list_feeds
+    from xhs.parallel_fetch import _log_progress, batch_get_details
+
+    _log_progress("[list] 获取首页推荐...")
+
+    browser, page = _connect(args)
+    try:
+        feeds = list_feeds(page)
+        browser.close_page(page)
+
+        top_n = min(args.top_n, len(feeds))
+        selected = feeds[:top_n]
+        _log_progress(f"[list] 找到 {len(feeds)} 条推荐，获取前 {top_n} 条详情...")
+
+        details = batch_get_details(browser, selected)
+        _log_progress(f"[done] 结果已写入 {args.output_dir}")
+        _write_fetch_results(selected, details, args.output_dir, "list")
+    finally:
         browser.close()
 
 
@@ -1122,6 +1238,24 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--user-id", required=True, help="用户 ID")
     sub.add_argument("--xsec-token", required=True, help="xsec_token")
     sub.set_defaults(func=cmd_user_profile)
+
+    # search-and-fetch（搜索 + 批量获取详情）
+    sub = subparsers.add_parser("search-and-fetch", help="搜索笔记并批量获取前 N 条详情")
+    sub.add_argument("--keyword", required=True, help="搜索关键词")
+    sub.add_argument("--top-n", type=int, default=5, help="获取前 N 条详情 (default: 5)")
+    sub.add_argument("--output-dir", required=True, help="结果输出目录")
+    sub.add_argument("--sort-by", help="排序: 综合|最新|最多点赞|最多评论|最多收藏")
+    sub.add_argument("--note-type", help="类型: 不限|视频|图文")
+    sub.add_argument("--publish-time", help="时间: 不限|一天内|一周内|半年内")
+    sub.add_argument("--search-scope", help="范围: 不限|已看过|未看过|已关注")
+    sub.add_argument("--location", help="位置: 不限|同城|附近")
+    sub.set_defaults(func=cmd_search_and_fetch)
+
+    # list-and-fetch（首页推荐 + 批量获取详情）
+    sub = subparsers.add_parser("list-and-fetch", help="获取首页推荐并批量获取前 N 条详情")
+    sub.add_argument("--top-n", type=int, default=5, help="获取前 N 条详情 (default: 5)")
+    sub.add_argument("--output-dir", required=True, help="结果输出目录")
+    sub.set_defaults(func=cmd_list_and_fetch)
 
     # post-comment
     sub = subparsers.add_parser("post-comment", help="发表评论")
