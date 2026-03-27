@@ -686,11 +686,17 @@ def cmd_user_profile(args: argparse.Namespace) -> None:
 
 
 def _resolve_output_dir() -> str:
-    """自动生成基于 UUID 的输出目录。"""
+    """自动生成基于 UUID 的输出目录。
+
+    默认放在项目根目录的 output/ 下，可通过 XHS_OUTPUT_DIR 环境变量覆盖。
+    """
     import uuid
 
+    base = os.getenv("XHS_OUTPUT_DIR") or os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "output"
+    )
     session_id = uuid.uuid4().hex[:12]
-    return os.path.join(tempfile.gettempdir(), "xhs-explore", session_id)
+    return os.path.join(base, session_id)
 
 
 def _write_fetch_results(
