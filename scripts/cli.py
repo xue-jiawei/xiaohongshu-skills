@@ -299,6 +299,19 @@ def _qrcode_fallback(browser, page, args: argparse.Namespace) -> None:
 # ========== 子命令实现 ==========
 
 
+def cmd_start_browser(args: argparse.Namespace) -> None:
+    """启动 Chrome 浏览器（不执行任何操作）。"""
+    from chrome_launcher import ensure_chrome, has_display
+
+    user_data_dir = _resolve_account(args)
+    headless = getattr(args, "headless", False) or not has_display()
+    ok = ensure_chrome(port=args.port, headless=headless, user_data_dir=user_data_dir)
+    if ok:
+        _output({"success": True, "port": args.port, "headless": headless})
+    else:
+        _output({"success": False, "error": "无法启动 Chrome"}, exit_code=2)
+
+
 def cmd_check_login(args: argparse.Namespace) -> None:
     """检查登录状态。未登录时自动获取二维码，省去单独调 get-qrcode 的一轮通信。
 
@@ -1186,6 +1199,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--account", default="", help="账号名称")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # start-browser
+    sub = subparsers.add_parser("start-browser", help="启动 Chrome 浏览器")
+    sub.add_argument("--headless", action="store_true", help="无头模式")
+    sub.set_defaults(func=cmd_start_browser)
 
     # check-login
     sub = subparsers.add_parser("check-login", help="检查登录状态")
