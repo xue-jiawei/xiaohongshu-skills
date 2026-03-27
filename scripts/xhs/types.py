@@ -140,31 +140,17 @@ class Feed:
         )
 
     def to_dict(self) -> dict:
-        """序列化为 JSON 兼容的字典。"""
-        result: dict = {
+        """序列化为精简字典，仅保留 LLM 决策所需字段。"""
+        return {
             "id": self.id,
             "xsecToken": self.xsec_token,
-            "modelType": self.model_type,
-            "index": self.index,
-            "displayTitle": self.note_card.display_title,
-            "type": self.note_card.type,
-            "user": {
-                "userId": self.note_card.user.user_id,
-                "nickname": self.note_card.user.nickname or self.note_card.user.nick_name,
-            },
+            "title": self.note_card.display_title,
             "interactInfo": {
                 "likedCount": self.note_card.interact_info.liked_count,
                 "collectedCount": self.note_card.interact_info.collected_count,
                 "commentCount": self.note_card.interact_info.comment_count,
-                "sharedCount": self.note_card.interact_info.shared_count,
             },
         }
-        cover = self.note_card.cover
-        if cover.url or cover.url_default:
-            result["cover"] = cover.url or cover.url_default
-        if self.note_card.video:
-            result["video"] = {"duration": self.note_card.video.capa.duration}
-        return result
 
 
 # ========== Feed 详情 ==========
@@ -220,17 +206,10 @@ class Comment:
         )
 
     def to_dict(self) -> dict:
+        """精简输出：仅保留内容和热度。"""
         result: dict = {
-            "id": self.id,
             "content": self.content,
             "likeCount": self.like_count,
-            "createTime": self.create_time,
-            "ipLocation": self.ip_location,
-            "user": {
-                "userId": self.user_info.user_id,
-                "nickname": self.user_info.nickname or self.user_info.nick_name,
-            },
-            "subCommentCount": self.sub_comment_count,
         }
         if self.sub_comments:
             result["subComments"] = [c.to_dict() for c in self.sub_comments]
@@ -281,33 +260,15 @@ class FeedDetail:
         )
 
     def to_dict(self) -> dict:
+        """精简输出：仅保留正文内容和互动数据。"""
         return {
-            "noteId": self.note_id,
             "title": self.title,
             "desc": self.desc,
-            "type": self.type,
-            "time": self.time,
-            "ipLocation": self.ip_location,
-            "user": {
-                "userId": self.user.user_id,
-                "nickname": self.user.nickname or self.user.nick_name,
-            },
             "interactInfo": {
-                "liked": self.interact_info.liked,
                 "likedCount": self.interact_info.liked_count,
                 "collectedCount": self.interact_info.collected_count,
-                "collected": self.interact_info.collected,
                 "commentCount": self.interact_info.comment_count,
-                "sharedCount": self.interact_info.shared_count,
             },
-            "imageList": [
-                {
-                    "width": img.width,
-                    "height": img.height,
-                    "urlDefault": img.url_default,
-                }
-                for img in self.image_list
-            ],
         }
 
 

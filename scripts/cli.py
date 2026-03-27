@@ -671,6 +671,16 @@ def cmd_user_profile(args: argparse.Namespace) -> None:
         browser.close()
 
 
+def _resolve_output_dir(output_dir: str) -> str:
+    """如果 output_dir 为空，自动生成基于 UUID 的输出目录。"""
+    if output_dir:
+        return output_dir
+    import uuid
+
+    session_id = uuid.uuid4().hex[:12]
+    return os.path.join(tempfile.gettempdir(), "xhs-explore", session_id)
+
+
 def _write_fetch_results(
     feeds: list,
     details: list,
@@ -749,6 +759,8 @@ def cmd_search_and_fetch(args: argparse.Namespace) -> None:
         f'[search] 搜索关键词: "{args.keyword}"' + (f" ({filters_desc})" if filters_desc else "")
     )
 
+    output_dir = _resolve_output_dir(args.output_dir)
+
     browser, page = _connect(args)
     try:
         feeds = search_feeds(page, args.keyword, filter_opt)
@@ -759,8 +771,8 @@ def cmd_search_and_fetch(args: argparse.Namespace) -> None:
         _log_progress(f"[search] 找到 {len(feeds)} 条结果，获取前 {top_n} 条详情...")
 
         details = batch_get_details(browser, selected)
-        _log_progress(f"[done] 结果已写入 {args.output_dir}")
-        _write_fetch_results(selected, details, args.output_dir, "search")
+        _log_progress(f"[done] 结果已写入 {output_dir}")
+        _write_fetch_results(selected, details, output_dir, "search")
     finally:
         browser.close()
 
@@ -772,6 +784,8 @@ def cmd_list_and_fetch(args: argparse.Namespace) -> None:
 
     _log_progress("[list] 获取首页推荐...")
 
+    output_dir = _resolve_output_dir(args.output_dir)
+
     browser, page = _connect(args)
     try:
         feeds = list_feeds(page)
@@ -782,8 +796,8 @@ def cmd_list_and_fetch(args: argparse.Namespace) -> None:
         _log_progress(f"[list] 找到 {len(feeds)} 条推荐，获取前 {top_n} 条详情...")
 
         details = batch_get_details(browser, selected)
-        _log_progress(f"[done] 结果已写入 {args.output_dir}")
-        _write_fetch_results(selected, details, args.output_dir, "list")
+        _log_progress(f"[done] 结果已写入 {output_dir}")
+        _write_fetch_results(selected, details, output_dir, "list")
     finally:
         browser.close()
 
@@ -1243,7 +1257,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser("search-and-fetch", help="搜索笔记并批量获取前 N 条详情")
     sub.add_argument("--keyword", required=True, help="搜索关键词")
     sub.add_argument("--top-n", type=int, default=5, help="获取前 N 条详情 (default: 5)")
-    sub.add_argument("--output-dir", required=True, help="结果输出目录")
+    sub.add_argument("--output-dir", default="", help="结果输出目录（留空自动生成 UUID）")
     sub.add_argument("--sort-by", help="排序: 综合|最新|最多点赞|最多评论|最多收藏")
     sub.add_argument("--note-type", help="类型: 不限|视频|图文")
     sub.add_argument("--publish-time", help="时间: 不限|一天内|一周内|半年内")
@@ -1254,7 +1268,7 @@ def build_parser() -> argparse.ArgumentParser:
     # list-and-fetch（首页推荐 + 批量获取详情）
     sub = subparsers.add_parser("list-and-fetch", help="获取首页推荐并批量获取前 N 条详情")
     sub.add_argument("--top-n", type=int, default=5, help="获取前 N 条详情 (default: 5)")
-    sub.add_argument("--output-dir", required=True, help="结果输出目录")
+    sub.add_argument("--output-dir", default="", help="结果输出目录（留空自动生成 UUID）")
     sub.set_defaults(func=cmd_list_and_fetch)
 
     # post-comment
