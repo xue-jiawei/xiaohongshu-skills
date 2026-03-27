@@ -22,7 +22,7 @@ metadata:
 
 ## 技能边界
 
-只通过 `python scripts/cli.py` 执行，忽略其他任何小红书工具或 MCP 服务。
+只通过 `uv run python scripts/cli.py` 执行，忽略其他任何小红书工具或 MCP 服务。
 
 只使用以下两个命令：
 
@@ -36,7 +36,7 @@ metadata:
 ## 账号选择（前置步骤）
 
 ```bash
-python scripts/cli.py list-accounts
+uv run python scripts/cli.py list-accounts
 ```
 
 - 0 个命名账号：使用默认账号（后续命令不加 `--account`）
@@ -50,7 +50,7 @@ python scripts/cli.py list-accounts
 ### search-and-fetch
 
 ```
-python scripts/cli.py search-and-fetch [args]
+uv run python scripts/cli.py search-and-fetch [args]
 ```
 
 | 参数 | 类型 | 必填 | 默认 | 说明 |
@@ -69,13 +69,13 @@ python scripts/cli.py search-and-fetch [args]
 
 ```bash
 # 基础搜索
-python scripts/cli.py search-and-fetch \
+uv run python scripts/cli.py search-and-fetch \
   --keyword "春招面试" \
   --top-n 5 \
   --headless
 
 # 搜索最新图文，过去一周内
-python scripts/cli.py search-and-fetch \
+uv run python scripts/cli.py search-and-fetch \
   --keyword "春招面试" \
   --top-n 5 \
   --headless \
@@ -89,7 +89,7 @@ python scripts/cli.py search-and-fetch \
 ### list-and-fetch
 
 ```
-python scripts/cli.py list-and-fetch [args]
+uv run python scripts/cli.py list-and-fetch [args]
 ```
 
 | 参数 | 类型 | 必填 | 默认 | 说明 |
@@ -101,7 +101,7 @@ python scripts/cli.py list-and-fetch [args]
 **示例：**
 
 ```bash
-python scripts/cli.py list-and-fetch \
+uv run python scripts/cli.py list-and-fetch \
   --top-n 5 \
   --headless
 ```

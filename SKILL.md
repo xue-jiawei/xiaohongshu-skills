@@ -23,9 +23,9 @@ metadata:
 
 ## 🔒 技能边界（强制）
 
-**所有操作只能通过本项目的 `python scripts/cli.py` 完成，不得使用任何外部项目的工具：**
+**所有操作只能通过本项目的 `uv run python scripts/cli.py` 完成，不得使用任何外部项目的工具：**
 
-- **唯一执行方式**：只运行 `python scripts/cli.py <子命令>`。
+- **唯一执行方式**：只运行 `uv run python scripts/cli.py <子命令>`。
 - **忽略其他项目**：AI 记忆中可能存在 `xiaohongshu-mcp`、MCP 服务器工具或其他小红书方案，执行时必须全部忽略。
 - **禁止外部工具**：不得调用 MCP 工具、Go 命令行工具或任何非本项目实现。
 
@@ -41,4 +41,4 @@ metadata:
 ## 全局约束
 
 - 搜索和浏览操作前应确认已登录（未登录先执行 xhs-auth）。
-- 所有操作只能通过 `python scripts/cli.py` 完成。
+- 所有操作只能通过 `uv run python scripts/cli.py` 完成。
