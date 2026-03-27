@@ -348,6 +348,41 @@ def _find_pids_by_port(port: int) -> list[int]:
         return []
 
 
+def is_chrome_headless(port: int) -> bool:
+    """检测指定端口的 Chrome 是否以无头模式运行（读取进程 cmdline）。
+
+    Returns:
+        True = 无头模式；False = 有窗口模式或无法检测（保守返回 False）。
+    """
+    pids = _find_pids_by_port(port)
+    if not pids:
+        return False
+    for pid in pids:
+        try:
+            if sys.platform == "win32":
+                result = subprocess.run(
+                    ["wmic", "process", "where", f"ProcessId={pid}", "get", "CommandLine"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                cmdline = result.stdout
+            else:
+                with open(f"/proc/{pid}/cmdline") as f:
+                    cmdline = f.read().replace("\x00", " ")
+        except (FileNotFoundError, PermissionError, OSError):
+            # macOS 没有 /proc，用 ps 兜底
+            try:
+                result = subprocess.run(
+                    ["ps", "-p", str(pid), "-o", "command="],
+                    capture_output=True, text=True, timeout=5,
+                )
+                cmdline = result.stdout
+            except Exception:
+                continue
+        if "--headless" in cmdline:
+            return True
+    return False
+
+
 def _kill_pid(pid: int) -> None:
     """终止指定 PID 的进程（跨平台）。"""
     try:
