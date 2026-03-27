@@ -58,7 +58,6 @@ python scripts/cli.py search-and-fetch [args]
 | `--keyword` | str | ✅ | — | 搜索关键词 |
 | `--top-n` | int | | 5 | 获取前 N 条笔记的详情 |
 | `--headless` | flag | | false | **始终加上**，不弹出浏览器窗口 |
-| `--output-dir` | str | | 自动生成 | 结果目录，留空自动生成 UUID 路径 |
 | `--sort-by` | str | | 综合 | 排序方式：`综合` \| `最新` \| `最多点赞` \| `最多评论` \| `最多收藏` |
 | `--note-type` | str | | 不限 | 内容类型：`不限` \| `图文` \| `视频` |
 | `--publish-time` | str | | 不限 | 发布时间：`不限` \| `一天内` \| `一周内` \| `半年内` |
@@ -97,7 +96,6 @@ python scripts/cli.py list-and-fetch [args]
 |------|------|------|------|------|
 | `--top-n` | int | | 5 | 获取前 N 条推荐笔记的详情 |
 | `--headless` | flag | | false | **始终加上**，不弹出浏览器窗口 |
-| `--output-dir` | str | | 自动生成 | 结果目录，留空自动生成 UUID 路径 |
 | `--account` | str | | 默认账号 | 账号名称（多账号时使用） |
 
 **示例：**
