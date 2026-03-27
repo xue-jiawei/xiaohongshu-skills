@@ -144,15 +144,12 @@ def _connect(args: argparse.Namespace):
     优先复用上次命令留下的 tab（通过端口隔离的 session tab 文件记录），
     避免每次命令都新建 tab 导致 Chrome 中 tab 堆积。
     """
-    from chrome_launcher import ensure_chrome, has_display, is_port_open, restart_chrome
+    from chrome_launcher import ensure_chrome, has_display
     from xhs.cdp import Browser
 
     user_data_dir = _resolve_account(args)
 
     headless = getattr(args, "headless", False) or not has_display()
-    # 若请求无头模式但 Chrome 已以有窗口模式运行，则重启为无头模式
-    if headless and is_port_open(args.port):
-        restart_chrome(port=args.port, headless=True, user_data_dir=user_data_dir)
     if not ensure_chrome(port=args.port, headless=headless, user_data_dir=user_data_dir):
         _output(
             {"success": False, "error": "无法启动 Chrome，请检查 Chrome 是否已安装"},
