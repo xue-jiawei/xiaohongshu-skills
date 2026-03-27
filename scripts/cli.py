@@ -149,7 +149,8 @@ def _connect(args: argparse.Namespace):
 
     user_data_dir = _resolve_account(args)
 
-    if not ensure_chrome(port=args.port, headless=not has_display(), user_data_dir=user_data_dir):
+    headless = getattr(args, "headless", False) or not has_display()
+    if not ensure_chrome(port=args.port, headless=headless, user_data_dir=user_data_dir):
         _output(
             {"success": False, "error": "无法启动 Chrome，请检查 Chrome 是否已安装"},
             exit_code=2,
@@ -1263,12 +1264,14 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--publish-time", help="时间: 不限|一天内|一周内|半年内")
     sub.add_argument("--search-scope", help="范围: 不限|已看过|未看过|已关注")
     sub.add_argument("--location", help="位置: 不限|同城|附近")
+    sub.add_argument("--headless", action="store_true", help="无头模式（不弹出浏览器窗口）")
     sub.set_defaults(func=cmd_search_and_fetch)
 
     # list-and-fetch（首页推荐 + 批量获取详情）
     sub = subparsers.add_parser("list-and-fetch", help="获取首页推荐并批量获取前 N 条详情")
     sub.add_argument("--top-n", type=int, default=5, help="获取前 N 条详情 (default: 5)")
     sub.add_argument("--output-dir", default="", help="结果输出目录（留空自动生成 UUID）")
+    sub.add_argument("--headless", action="store_true", help="无头模式（不弹出浏览器窗口）")
     sub.set_defaults(func=cmd_list_and_fetch)
 
     # post-comment
