@@ -2,10 +2,10 @@
 
 小红书自动化 Claude Code Skills，基于 Python CDP 浏览器自动化引擎。
 
-## Git 工作流
+<!-- ## Git 工作流
 
 - 所有代码修改必须在分支上进行，禁止直接推送 main 分支
-- 分支开发完成后通过 PR 合入 main
+- 分支开发完成后通过 PR 合入 main -->
 
 ## 开发命令
 

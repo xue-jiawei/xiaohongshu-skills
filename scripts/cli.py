@@ -713,17 +713,19 @@ def _feed_detail_to_md(title: str, detail: object) -> str:
         "",
         f"点赞 {info.get('likedCount', 0)} | 收藏 {info.get('collectedCount', 0)} | 评论 {info.get('commentCount', 0)}",
         "",
-        "## 正文",
-        "",
         note.get("desc", "").strip(),
     ]
+    # 只保留有点赞的评论，按赞数降序取前5条，去掉子评论
     comments = d.get("comments", [])
-    if comments:
-        lines += ["", "## 评论", ""]
-        for c in comments:
-            lines.append(f"[{c.get('likeCount', 0)}赞] {c.get('content', '')}")
-            for sub in c.get("subComments", []):
-                lines.append(f"  └ {sub.get('content', '')}")
+    top_comments = sorted(
+        (c for c in comments if int(c.get("likeCount", 0) or 0) > 0),
+        key=lambda c: int(c.get("likeCount", 0) or 0),
+        reverse=True,
+    )[:5]
+    if top_comments:
+        lines += ["", "**热门评论**"]
+        for c in top_comments:
+            lines.append(f"- [{c.get('likeCount')}赞] {c.get('content', '')}")
     return "\n".join(lines)
 
 
