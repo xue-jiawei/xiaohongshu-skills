@@ -79,6 +79,7 @@ def get_feed_detail(
     xsec_token: str,
     load_all_comments: bool = False,
     config: CommentLoadConfig | None = None,
+    fast_mode: bool = False,
 ) -> FeedDetailResponse:
     """获取 Feed 详情（含评论）。
 
@@ -119,7 +120,7 @@ def get_feed_detail(
     else:
         raise RuntimeError("页面导航失败")
 
-    sleep_random(800, 1500)
+    sleep_random(200, 400) if fast_mode else sleep_random(800, 1500)
 
     # 检查页面可访问性（扫码验证时自动等待重试）
     _check_page_accessible(page, url)

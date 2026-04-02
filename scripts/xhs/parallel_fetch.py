@@ -26,6 +26,7 @@ def _log_progress(msg: str) -> None:
 def batch_get_details(
     browser: Browser,
     feeds: list[Feed],
+    fast_mode: bool = False,
 ) -> list[FeedDetailResponse | None]:
     """批量获取多篇笔记详情。
 
@@ -51,7 +52,7 @@ def batch_get_details(
 
         page = browser.new_page()
         try:
-            detail = get_feed_detail(page, feed.id, feed.xsec_token)
+            detail = get_feed_detail(page, feed.id, feed.xsec_token, fast_mode=fast_mode)
             results[i] = detail
             _log_progress(f"[fetch] {i + 1}/{total} 完成 ✓")
         except Exception as e:

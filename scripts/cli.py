@@ -809,11 +809,14 @@ def cmd_search_and_fetch(args: argparse.Namespace) -> None:
         feeds = search_feeds(page, args.keyword, filter_opt)
         browser.close_page(page)
 
-        top_n = min(args.top_n, len(feeds))
-        selected = feeds[:top_n]
-        _log_progress(f"[search] 找到 {len(feeds)} 条结果，获取前 {top_n} 条详情...")
+        # 预过滤：优先有互动的帖子，排除零赞零评论新帖
+        engaged = [f for f in feeds if int(f.note_card.interact_info.liked_count or 0) > 0]
+        pool = engaged if len(engaged) >= args.top_n else feeds
+        top_n = min(args.top_n, len(pool))
+        selected = pool[:top_n]
+        _log_progress(f"[search] 找到 {len(feeds)} 条结果（{len(engaged)} 条有互动），获取前 {top_n} 条详情...")
 
-        details = batch_get_details(browser, selected)
+        details = batch_get_details(browser, selected, fast_mode=True)
         _log_progress(f"[done] 结果已写入 {output_file}")
         _write_fetch_results(selected, details, output_file, "search", keyword=args.keyword)
     finally:
@@ -835,11 +838,13 @@ def cmd_list_and_fetch(args: argparse.Namespace) -> None:
         feeds = list_feeds(page)
         browser.close_page(page)
 
-        top_n = min(args.top_n, len(feeds))
-        selected = feeds[:top_n]
-        _log_progress(f"[list] 找到 {len(feeds)} 条推荐，获取前 {top_n} 条详情...")
+        engaged = [f for f in feeds if int(f.note_card.interact_info.liked_count or 0) > 0]
+        pool = engaged if len(engaged) >= args.top_n else feeds
+        top_n = min(args.top_n, len(pool))
+        selected = pool[:top_n]
+        _log_progress(f"[list] 找到 {len(feeds)} 条推荐（{len(engaged)} 条有互动），获取前 {top_n} 条详情...")
 
-        details = batch_get_details(browser, selected)
+        details = batch_get_details(browser, selected, fast_mode=True)
         _log_progress(f"[done] 结果已写入 {output_file}")
         _write_fetch_results(selected, details, output_file, "list")
     finally:
