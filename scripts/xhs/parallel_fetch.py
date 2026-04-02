@@ -1,8 +1,8 @@
-"""批量获取多篇笔记详情（消除 LLM 逐条编排开销）。
+"""批量并发获取多篇笔记详情。
 
-由于 CDP WebSocket 不支持并发，详情获取仍为串行，但通过将多篇笔记的获取
-合并到一次 CLI 调用中，消除了 LLM 逐条解析 JSON → 提取 ID → 再次调用的
-编排开销（每轮 2-5 秒），使总耗时从 O(n * (fetch + LLM)) 降低到 O(n * fetch)。
+CDPClient 已改为线程安全（单 reader 线程 + event 分发），
+ThreadPoolExecutor(max_workers=3) 并发开 3 个 tab 同时 fetch，
+总耗时从 O(n) 降低到 O(n/3)。
 """
 
 from __future__ import annotations
@@ -10,12 +10,16 @@ from __future__ import annotations
 import contextlib
 import logging
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .cdp import Browser
 from .feed_detail import get_feed_detail
 from .types import Feed, FeedDetailResponse
 
 logger = logging.getLogger(__name__)
+
+MAX_WORKERS = 3
 
 
 def _log_progress(msg: str) -> None:
@@ -28,14 +32,12 @@ def batch_get_details(
     feeds: list[Feed],
     fast_mode: bool = False,
 ) -> list[FeedDetailResponse | None]:
-    """批量获取多篇笔记详情。
-
-    为每篇笔记开一个新 tab，获取详情后关闭，串行执行。
-    主要优势：消除 LLM 逐条编排的上下文切换开销。
+    """并发批量获取笔记详情（最多 3 个 tab 同时运行）。
 
     Args:
-        browser: 已连接的 Browser 实例。
+        browser: 已连接的 Browser 实例（CDPClient 线程安全）。
         feeds: 需要获取详情的 Feed 列表。
+        fast_mode: 是否启用快速模式（减少 headless 等待延迟）。
 
     Returns:
         与 feeds 同序的详情列表，失败的条目为 None。
@@ -43,23 +45,36 @@ def batch_get_details(
     if not feeds:
         return []
 
-    results: list[FeedDetailResponse | None] = [None] * len(feeds)
     total = len(feeds)
+    results: list[FeedDetailResponse | None] = [None] * total
+    completed_count = 0
+    counter_lock = threading.Lock()
 
-    for i, feed in enumerate(feeds):
+    def fetch_one(idx: int, feed: Feed) -> tuple[int, FeedDetailResponse | None]:
+        nonlocal completed_count
         title = feed.note_card.display_title or feed.id
-        _log_progress(f'[fetch] {i + 1}/{total} 正在加载: "{title}"')
-
         page = browser.new_page()
         try:
             detail = get_feed_detail(page, feed.id, feed.xsec_token, fast_mode=fast_mode)
-            results[i] = detail
-            _log_progress(f"[fetch] {i + 1}/{total} 完成 ✓")
+            with counter_lock:
+                completed_count += 1
+                _log_progress(f'[fetch] {completed_count}/{total} 完成 ✓ "{title}"')
+            return idx, detail
         except Exception as e:
             logger.warning("获取详情失败 (feed=%s): %s", feed.id, e)
-            _log_progress(f"[fetch] {i + 1}/{total} 失败 ✗ ({e})")
+            with counter_lock:
+                completed_count += 1
+                _log_progress(f'[fetch] {completed_count}/{total} 失败 ✗ "{title}" ({e})')
+            return idx, None
         finally:
             with contextlib.suppress(Exception):
                 browser.close_page(page)
+
+    _log_progress(f"[fetch] 并发获取 {total} 条详情 (workers={MAX_WORKERS})...")
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(fetch_one, i, feed): i for i, feed in enumerate(feeds)}
+        for future in as_completed(futures):
+            idx, detail = future.result()
+            results[idx] = detail
 
     return results

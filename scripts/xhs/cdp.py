@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import random
+import threading
 import time
 from typing import Any
 
@@ -21,40 +22,77 @@ logger = logging.getLogger(__name__)
 
 
 class CDPClient:
-    """底层 CDP WebSocket 通信客户端。"""
+    """底层 CDP WebSocket 通信客户端（线程安全）。
+
+    单一 reader 线程负责接收所有消息，通过 threading.Event 分发给各等待方，
+    支持多线程并发发送命令（多 tab 并行 fetch）。
+    """
 
     def __init__(self, ws_url: str) -> None:
         self._ws = ws_client.connect(ws_url, max_size=50 * 1024 * 1024)
         self._id = 0
-        self._callbacks: dict[int, Any] = {}
+        self._id_lock = threading.Lock()
+        self._send_lock = threading.Lock()
+        self._dispatch_lock = threading.Lock()
+        self._pending: dict[int, threading.Event] = {}
+        self._results: dict[int, dict] = {}
+        self._closed = False
+        self._reader = threading.Thread(target=self._reader_loop, daemon=True)
+        self._reader.start()
+
+    def _reader_loop(self) -> None:
+        """单一读线程：接收所有 WebSocket 消息并按 id 分发。"""
+        while not self._closed:
+            try:
+                raw = self._ws.recv(timeout=1.0)
+                data = json.loads(raw)
+                msg_id = data.get("id")
+                if msg_id is not None:
+                    with self._dispatch_lock:
+                        if msg_id in self._pending:
+                            self._results[msg_id] = data
+                            self._pending[msg_id].set()
+            except TimeoutError:
+                continue
+            except Exception:
+                break
+
+    def _next_id(self) -> int:
+        with self._id_lock:
+            self._id += 1
+            return self._id
+
+    def _dispatch_send(self, msg: dict, timeout: float) -> dict:
+        """注册 pending event → 发送 → 等待分发 → 返回结果。"""
+        msg_id = msg["id"]
+        event = threading.Event()
+        with self._dispatch_lock:
+            self._pending[msg_id] = event
+        with self._send_lock:
+            self._ws.send(json.dumps(msg))
+        if not event.wait(timeout=timeout):
+            with self._dispatch_lock:
+                self._pending.pop(msg_id, None)
+                self._results.pop(msg_id, None)
+            raise CDPError(f"等待 CDP 响应超时 (id={msg_id})")
+        with self._dispatch_lock:
+            result = self._results.pop(msg_id, {})
+            self._pending.pop(msg_id, None)
+        if "error" in result:
+            raise CDPError(f"CDP 错误: {result['error']}")
+        return result.get("result", {})
 
     def send(self, method: str, params: dict | None = None) -> dict:
-        """发送 CDP 命令并等待结果。"""
-        self._id += 1
-        msg: dict[str, Any] = {"id": self._id, "method": method}
+        """发送 CDP 命令并等待结果（线程安全）。"""
+        msg: dict[str, Any] = {"id": self._next_id(), "method": method}
         if params:
             msg["params"] = params
-        self._ws.send(json.dumps(msg))
-        return self._wait_for(self._id)
-
-    def _wait_for(self, msg_id: int, timeout: float = 30.0) -> dict:
-        """等待指定 id 的响应。"""
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            try:
-                raw = self._ws.recv(timeout=max(0.1, deadline - time.monotonic()))
-            except TimeoutError:
-                break
-            data = json.loads(raw)
-            if data.get("id") == msg_id:
-                if "error" in data:
-                    raise CDPError(f"CDP 错误: {data['error']}")
-                return data.get("result", {})
-        raise CDPError(f"等待 CDP 响应超时 (id={msg_id})")
+        return self._dispatch_send(msg, timeout=30.0)
 
     def close(self) -> None:
         import contextlib
 
+        self._closed = True
         with contextlib.suppress(Exception):
             self._ws.close()
 
@@ -67,35 +105,17 @@ class Page:
         self.target_id = target_id
         self.session_id = session_id
         self._ws = cdp._ws
-        self._id_counter = 1000
 
     def _send_session(self, method: str, params: dict | None = None) -> dict:
-        """向 session 发送命令。"""
-        self._id_counter += 1
+        """向 session 发送命令（线程安全，复用 CDPClient reader 分发）。"""
         msg: dict[str, Any] = {
-            "id": self._id_counter,
+            "id": self._cdp._next_id(),
             "method": method,
             "sessionId": self.session_id,
         }
         if params:
             msg["params"] = params
-        self._ws.send(json.dumps(msg))
-        return self._wait_session(self._id_counter)
-
-    def _wait_session(self, msg_id: int, timeout: float = 60.0) -> dict:
-        """等待 session 响应。"""
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            try:
-                raw = self._ws.recv(timeout=max(0.1, deadline - time.monotonic()))
-            except TimeoutError:
-                break
-            data = json.loads(raw)
-            if data.get("id") == msg_id:
-                if "error" in data:
-                    raise CDPError(f"CDP 错误: {data['error']}")
-                return data.get("result", {})
-        raise CDPError(f"等待 session 响应超时 (id={msg_id})")
+        return self._cdp._dispatch_send(msg, timeout=60.0)
 
     def navigate(self, url: str) -> None:
         """导航到指定 URL。"""
