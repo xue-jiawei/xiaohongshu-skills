@@ -732,11 +732,15 @@ def _write_fetch_results(
         collected = info.collected_count if info else "0"
         comment_count = info.comment_count if info else "0"
 
+        user_id = feed.note_card.user.user_id if feed.note_card.user else ""
+        meta = f"`feed_id:{feed.id} | xsec_token:{feed.xsec_token} | user_id:{user_id}`"
+
         md_lines.append(f"---\n\n## {i}. {title}")
+        md_lines.append(meta)
         md_lines.append(f"点赞 {liked} | 收藏 {collected} | 评论 {comment_count}")
 
         if detail is None:
-            md_lines.append("*(详情获取失败)*")
+            md_lines.append("*(详情获取失败，可用上方 feed_id + xsec_token 重新获取)*")
             md_lines.append("")
             continue
 
