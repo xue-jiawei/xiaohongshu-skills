@@ -689,8 +689,8 @@ def cmd_user_profile(args: argparse.Namespace) -> None:
         browser.close()
 
 
-def _resolve_output_dir() -> str:
-    """自动生成基于 UUID 的输出目录。
+def _resolve_output_file() -> str:
+    """自动生成基于 UUID 的输出文件路径。
 
     默认放在项目根目录的 output/ 下，可通过 XHS_OUTPUT_DIR 环境变量覆盖。
     """
@@ -700,102 +700,77 @@ def _resolve_output_dir() -> str:
         os.path.dirname(os.path.dirname(__file__)), "output"
     )
     session_id = uuid.uuid4().hex[:12]
-    return os.path.join(base, session_id)
-
-
-def _feed_detail_to_md(title: str, detail: object) -> str:
-    """将笔记详情转为精简 Markdown，适合 LLM 分析。"""
-    d = detail.to_dict()
-    note = d.get("note", {})
-    info = note.get("interactInfo", {})
-    lines = [
-        f"# {title or note.get('title', '')}",
-        "",
-        f"点赞 {info.get('likedCount', 0)} | 收藏 {info.get('collectedCount', 0)} | 评论 {info.get('commentCount', 0)}",
-        "",
-        note.get("desc", "").strip(),
-    ]
-    # 只保留有点赞的评论，按赞数降序取前5条，去掉子评论
-    comments = d.get("comments", [])
-    top_comments = sorted(
-        (c for c in comments if int(c.get("likeCount", 0) or 0) > 0),
-        key=lambda c: int(c.get("likeCount", 0) or 0),
-        reverse=True,
-    )[:5]
-    if top_comments:
-        lines += ["", "**热门评论**"]
-        for c in top_comments:
-            lines.append(f"- [{c.get('likeCount')}赞] {c.get('content', '')}")
-    return "\n".join(lines)
+    return os.path.join(base, f"{session_id}.md")
 
 
 def _write_fetch_results(
     feeds: list,
     details: list,
-    output_dir: str,
+    output_file: str,
     source: str,
     keyword: str = "",
 ) -> None:
-    """将搜索/列表结果和详情写入 output_dir（Markdown 格式），输出 manifest。"""
-    os.makedirs(output_dir, exist_ok=True)
+    """将所有结果写入单个 Markdown 文件，供 LLM 直接读取分析。"""
+    import datetime
 
-    # 写入各笔记详情（.md），同时收集摘要行
-    detail_files: list[dict] = []
-    for feed, detail in zip(feeds, details, strict=True):
-        title = feed.note_card.display_title
-        info = feed.note_card.interact_info
-        liked = info.liked_count if info else ""
-        collected = info.collected_count if info else ""
-        comment = info.comment_count if info else ""
-        if detail is None:
-            detail_files.append(
-                {"feed_id": feed.id, "title": title, "file": None,
-                 "liked": liked, "collected": collected, "comment": comment}
-            )
-            continue
-        fname = f"feed_{feed.id}.md"
-        fpath = os.path.join(output_dir, fname)
-        with open(fpath, "w", encoding="utf-8") as f:
-            f.write(_feed_detail_to_md(title, detail))
-        detail_files.append(
-            {"feed_id": feed.id, "title": title, "file": fname,
-             "liked": liked, "collected": collected, "comment": comment}
-        )
-
-    # 写入 manifest.md（汇总表，LLM 先读这个）
     heading = f'小红书{"搜索" if source == "search" else "首页推荐"}'
     if keyword:
         heading += f': "{keyword}"'
     fetched = sum(1 for d in details if d is not None)
+    date_str = datetime.date.today().isoformat()
+
     md_lines = [
         f"# {heading}",
-        f"> 共 {len(feeds)} 条 | 已获取详情 {fetched} 条 | 目录: {output_dir}",
+        f"> {date_str} | 共 {len(feeds)} 条 | 已获取详情 {fetched} 条",
         "",
-        "| # | 标题 | 点赞 | 收藏 | 评论 | 详情文件 |",
-        "|---|------|------|------|------|---------|",
     ]
-    for i, entry in enumerate(detail_files, 1):
-        file_ref = entry["file"] if entry["file"] else "—"
-        md_lines.append(
-            f"| {i} | {entry['title'] or '(无标题)'} "
-            f"| {entry['liked']} | {entry['collected']} | {entry['comment']} "
-            f"| {file_ref} |"
-        )
-    manifest_md = os.path.join(output_dir, "manifest.md")
-    with open(manifest_md, "w", encoding="utf-8") as f:
+
+    for i, (feed, detail) in enumerate(zip(feeds, details, strict=True), 1):
+        title = feed.note_card.display_title or "(无标题)"
+        info = feed.note_card.interact_info
+        liked = info.liked_count if info else "0"
+        collected = info.collected_count if info else "0"
+        comment_count = info.comment_count if info else "0"
+
+        md_lines.append(f"---\n\n## {i}. {title}")
+        md_lines.append(f"点赞 {liked} | 收藏 {collected} | 评论 {comment_count}")
+
+        if detail is None:
+            md_lines.append("*(详情获取失败)*")
+            md_lines.append("")
+            continue
+
+        d = detail.to_dict()
+        note = d.get("note", {})
+        desc = note.get("desc", "").strip()
+        if desc:
+            md_lines += ["", desc]
+
+        comments = d.get("comments", [])
+        top_comments = sorted(
+            (c for c in comments if int(c.get("likeCount", 0) or 0) > 0),
+            key=lambda c: int(c.get("likeCount", 0) or 0),
+            reverse=True,
+        )[:5]
+        if top_comments:
+            md_lines.append("")
+            md_lines.append("**热门评论**")
+            for c in top_comments:
+                md_lines.append(f"- [{c.get('likeCount')}赞] {c.get('content', '')}")
+
+        md_lines.append("")
+
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write("\n".join(md_lines))
 
-    result = {
+    _output({
         "source": source,
         "keyword": keyword,
         "total_feeds": len(feeds),
         "fetched_details": fetched,
-        "output_dir": output_dir,
-        "manifest_file": "manifest.md",
-        "details": [{"feed_id": e["feed_id"], "title": e["title"], "file": e["file"]}
-                    for e in detail_files],
-    }
-    _output(result)
+        "output_file": output_file,
+    })
 
 
 def cmd_search_and_fetch(args: argparse.Namespace) -> None:
@@ -827,7 +802,7 @@ def cmd_search_and_fetch(args: argparse.Namespace) -> None:
         f'[search] 搜索关键词: "{args.keyword}"' + (f" ({filters_desc})" if filters_desc else "")
     )
 
-    output_dir = _resolve_output_dir()
+    output_file = _resolve_output_file()
 
     browser, page = _connect(args)
     try:
@@ -839,8 +814,8 @@ def cmd_search_and_fetch(args: argparse.Namespace) -> None:
         _log_progress(f"[search] 找到 {len(feeds)} 条结果，获取前 {top_n} 条详情...")
 
         details = batch_get_details(browser, selected)
-        _log_progress(f"[done] 结果已写入 {output_dir}")
-        _write_fetch_results(selected, details, output_dir, "search", keyword=args.keyword)
+        _log_progress(f"[done] 结果已写入 {output_file}")
+        _write_fetch_results(selected, details, output_file, "search", keyword=args.keyword)
     finally:
         browser.close()
 
@@ -853,7 +828,7 @@ def cmd_list_and_fetch(args: argparse.Namespace) -> None:
     args.headless = True  # 探索命令始终无头运行
     _log_progress("[list] 获取首页推荐...")
 
-    output_dir = _resolve_output_dir()
+    output_file = _resolve_output_file()
 
     browser, page = _connect(args)
     try:
@@ -865,8 +840,8 @@ def cmd_list_and_fetch(args: argparse.Namespace) -> None:
         _log_progress(f"[list] 找到 {len(feeds)} 条推荐，获取前 {top_n} 条详情...")
 
         details = batch_get_details(browser, selected)
-        _log_progress(f"[done] 结果已写入 {output_dir}")
-        _write_fetch_results(selected, details, output_dir, "list")
+        _log_progress(f"[done] 结果已写入 {output_file}")
+        _write_fetch_results(selected, details, output_file, "list")
     finally:
         browser.close()
 
