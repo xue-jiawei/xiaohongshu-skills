@@ -703,55 +703,97 @@ def _resolve_output_dir() -> str:
     return os.path.join(base, session_id)
 
 
+def _feed_detail_to_md(title: str, detail: object) -> str:
+    """将笔记详情转为精简 Markdown，适合 LLM 分析。"""
+    d = detail.to_dict()
+    note = d.get("note", {})
+    info = note.get("interactInfo", {})
+    lines = [
+        f"# {title or note.get('title', '')}",
+        "",
+        f"点赞 {info.get('likedCount', 0)} | 收藏 {info.get('collectedCount', 0)} | 评论 {info.get('commentCount', 0)}",
+        "",
+        "## 正文",
+        "",
+        note.get("desc", "").strip(),
+    ]
+    comments = d.get("comments", [])
+    if comments:
+        lines += ["", "## 评论", ""]
+        for c in comments:
+            lines.append(f"[{c.get('likeCount', 0)}赞] {c.get('content', '')}")
+            for sub in c.get("subComments", []):
+                lines.append(f"  └ {sub.get('content', '')}")
+    return "\n".join(lines)
+
+
 def _write_fetch_results(
     feeds: list,
     details: list,
     output_dir: str,
     source: str,
+    keyword: str = "",
 ) -> None:
-    """将搜索/列表结果和详情写入 output_dir，输出 manifest。"""
+    """将搜索/列表结果和详情写入 output_dir（Markdown 格式），输出 manifest。"""
     os.makedirs(output_dir, exist_ok=True)
 
-    # 写入搜索/列表结果概要
-    summary_path = os.path.join(output_dir, f"{source}_results.json")
-    with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump(
-            {"feeds": [fd.to_dict() for fd in feeds], "count": len(feeds)},
-            f,
-            ensure_ascii=False,
-            indent=2,
-        )
-
-    # 写入各笔记详情
+    # 写入各笔记详情（.md），同时收集摘要行
     detail_files: list[dict] = []
     for feed, detail in zip(feeds, details, strict=True):
+        title = feed.note_card.display_title
+        info = feed.note_card.interact_info
+        liked = info.liked_count if info else ""
+        collected = info.collected_count if info else ""
+        comment = info.comment_count if info else ""
         if detail is None:
             detail_files.append(
-                {"feed_id": feed.id, "title": feed.note_card.display_title, "file": None}
+                {"feed_id": feed.id, "title": title, "file": None,
+                 "liked": liked, "collected": collected, "comment": comment}
             )
             continue
-        fname = f"feed_{feed.id}.json"
+        fname = f"feed_{feed.id}.md"
         fpath = os.path.join(output_dir, fname)
         with open(fpath, "w", encoding="utf-8") as f:
-            json.dump(detail.to_dict(), f, ensure_ascii=False, indent=2)
+            f.write(_feed_detail_to_md(title, detail))
         detail_files.append(
-            {"feed_id": feed.id, "title": feed.note_card.display_title, "file": fname}
+            {"feed_id": feed.id, "title": title, "file": fname,
+             "liked": liked, "collected": collected, "comment": comment}
         )
 
-    # 写入 manifest
-    manifest = {
-        "source": source,
-        "total_feeds": len(feeds),
-        "fetched_details": sum(1 for d in details if d is not None),
-        "output_dir": output_dir,
-        "summary_file": f"{source}_results.json",
-        "details": detail_files,
-    }
-    manifest_path = os.path.join(output_dir, "manifest.json")
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        json.dump(manifest, f, ensure_ascii=False, indent=2)
+    # 写入 manifest.md（汇总表，LLM 先读这个）
+    heading = f'小红书{"搜索" if source == "search" else "首页推荐"}'
+    if keyword:
+        heading += f': "{keyword}"'
+    fetched = sum(1 for d in details if d is not None)
+    md_lines = [
+        f"# {heading}",
+        f"> 共 {len(feeds)} 条 | 已获取详情 {fetched} 条 | 目录: {output_dir}",
+        "",
+        "| # | 标题 | 点赞 | 收藏 | 评论 | 详情文件 |",
+        "|---|------|------|------|------|---------|",
+    ]
+    for i, entry in enumerate(detail_files, 1):
+        file_ref = entry["file"] if entry["file"] else "—"
+        md_lines.append(
+            f"| {i} | {entry['title'] or '(无标题)'} "
+            f"| {entry['liked']} | {entry['collected']} | {entry['comment']} "
+            f"| {file_ref} |"
+        )
+    manifest_md = os.path.join(output_dir, "manifest.md")
+    with open(manifest_md, "w", encoding="utf-8") as f:
+        f.write("\n".join(md_lines))
 
-    _output(manifest)
+    result = {
+        "source": source,
+        "keyword": keyword,
+        "total_feeds": len(feeds),
+        "fetched_details": fetched,
+        "output_dir": output_dir,
+        "manifest_file": "manifest.md",
+        "details": [{"feed_id": e["feed_id"], "title": e["title"], "file": e["file"]}
+                    for e in detail_files],
+    }
+    _output(result)
 
 
 def cmd_search_and_fetch(args: argparse.Namespace) -> None:
@@ -796,7 +838,7 @@ def cmd_search_and_fetch(args: argparse.Namespace) -> None:
 
         details = batch_get_details(browser, selected)
         _log_progress(f"[done] 结果已写入 {output_dir}")
-        _write_fetch_results(selected, details, output_dir, "search")
+        _write_fetch_results(selected, details, output_dir, "search", keyword=args.keyword)
     finally:
         browser.close()
 
