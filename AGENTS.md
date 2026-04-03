@@ -1,11 +1,11 @@
 # xiaohongshu-skills
 
-小红书自动化 Codex Skills，基于 Python CDP 浏览器自动化引擎。
+小红书自动化 Codex / Claude Code Skills，基于 Python CDP 浏览器自动化引擎。
 
-<!-- ## Git 工作流
+## Git 工作流
 
-- 所有代码修改必须在分支上进行，禁止直接推送 main 分支
-- 分支开发完成后通过 PR 合入 main -->
+- 直接在main branch 开发，commit，push
+- 不需要新建branch
 
 ## 开发命令
 
@@ -21,7 +21,7 @@ uv run pytest              # 运行测试
 双层结构：`scripts/` 是 Python CDP 自动化引擎，`skills/` 是 Codex Skills 定义（SKILL.md 格式）。
 
 - `scripts/xhs/` — 核心自动化库（模块化，每个功能一个文件）
-- `scripts/cli.py` — 统一 CLI 入口，23 个子命令，JSON 结构化输出
+- `scripts/cli.py` — 统一 CLI 入口，32 个子命令，JSON 结构化输出
 - `scripts/publish_pipeline.py` — 发布编排器（含图片下载和登录检查）
 - `skills/*/SKILL.md` — 指导 Codex 如何调用 scripts/
 
@@ -52,29 +52,59 @@ python scripts/publish_pipeline.py --title-file t.txt --content-file c.txt --ima
 
 ## CLI 子命令对照表
 
-| CLI 子命令 | 对应 MCP 工具 | 分类 |
-|--|--|--|
-| `check-login` | check_login_status | 认证 |
-| `login` | get_login_qrcode | 认证 |
-| `phone-login` | — | 认证 |
-| `delete-cookies` | delete_cookies | 认证 |
-| `list-feeds` | list_feeds | 浏览 |
-| `search-feeds` | search_feeds | 浏览 |
-| `get-feed-detail` | get_feed_detail | 浏览 |
-| `user-profile` | user_profile | 浏览 |
-| `post-comment` | post_comment_to_feed | 互动 |
-| `reply-comment` | reply_comment_in_feed | 互动 |
-| `like-feed` | like_feed | 互动 |
-| `favorite-feed` | favorite_feed | 互动 |
-| `publish` | publish_content | 发布 |
-| `publish-video` | publish_with_video | 发布 |
-| `fill-publish` | — | 分步发布（图文填写） |
-| `fill-publish-video` | — | 分步发布（视频填写） |
-| `click-publish` | — | 分步发布（点击发布） |
-| `long-article` | — | 长文发布（填写+排版） |
-| `select-template` | — | 长文发布（选择模板） |
-| `next-step` | — | 长文发布（下一步+描述） |
-| `add-account` | — | 账号管理（添加，自动分配端口） |
-| `list-accounts` | — | 账号管理（列出所有） |
-| `remove-account` | — | 账号管理（删除） |
-| `set-default-account` | — | 账号管理（设置默认） |
+### 认证
+
+| CLI 子命令 | 说明 |
+|--|--|
+| `check-login` | 检查登录状态（未登录时自动返回二维码） |
+| `get-qrcode` | 获取登录二维码截图并立即返回（非阻塞） |
+| `wait-login` | 等待扫码登录完成（配合 `get-qrcode` 使用） |
+| `login` | 扫码登录（阻塞等待，适合本地终端） |
+| `send-code --phone` | 分步手机登录第一步：发送验证码 |
+| `verify-code --code` | 分步手机登录第二步：提交验证码 |
+| `phone-login` | 手机号+验证码登录（交互式，适合本地终端） |
+| `delete-cookies` | 退出登录并清除本地 cookies |
+| `start-browser` | 仅启动 Chrome，不执行其他操作 |
+
+### 账号管理
+
+| CLI 子命令 | 说明 |
+|--|--|
+| `add-account --name` | 添加命名账号，自动分配独立端口（从 9223 起） |
+| `list-accounts` | 列出所有命名账号及端口 |
+| `remove-account --name` | 删除命名账号 |
+| `set-default-account --name` | 设置默认账号 |
+
+### 搜索与浏览
+
+| CLI 子命令 | 说明 |
+|--|--|
+| `search-and-fetch` | 搜索关键词 + 并发批量获取前 N 条详情（推荐） |
+| `list-and-fetch` | 获取首页推荐 + 并发批量获取前 N 条详情（推荐） |
+| `search-feeds` | 搜索笔记列表（仅返回摘要，不含详情） |
+| `list-feeds` | 获取首页推荐 Feed 列表（仅返回摘要） |
+| `get-feed-detail` | 获取单篇笔记详情和评论 |
+| `user-profile` | 获取用户主页信息和全部笔记 |
+
+### 互动
+
+| CLI 子命令 | 说明 |
+|--|--|
+| `post-comment` | 对笔记发表评论 |
+| `reply-comment` | 回复指定评论或用户 |
+| `like-feed` | 点赞（`--unlike` 取消点赞） |
+| `favorite-feed` | 收藏（`--unfavorite` 取消收藏） |
+
+### 发布
+
+| CLI 子命令 | 说明 |
+|--|--|
+| `publish` | 图文一步发布 |
+| `publish-video` | 视频一步发布 |
+| `fill-publish` | 填写图文表单（不发布，等待用户确认） |
+| `fill-publish-video` | 填写视频表单（不发布，等待用户确认） |
+| `click-publish` | 点击发布按钮（配合 `fill-*` 使用） |
+| `save-draft` | 保存为草稿（用户取消时调用，防止内容丢失） |
+| `long-article` | 长文模式：填写内容并触发一键排版 |
+| `select-template` | 选择长文排版模板 |
+| `next-step` | 长文发布：进入发布页并填写描述 |
