@@ -14,8 +14,8 @@ version: 0.0.1.dev
 
 | 命令 | 主要参数 | 返回 |
 |------|----------|------|
-| `search-and-fetch` | `--keyword`（必填），`[--top-n 5]`，筛选参数 | JSON，含 `output_file` 路径 |
-| `list-and-fetch` | `[--top-n 5]` | JSON，含 `output_file` 路径 |
+| `search-and-fetch` | `--keyword`（必填），`[--top-n 20]`，筛选参数 | JSON，含 `output_file` 路径 |
+| `list-and-fetch` | `[--top-n 20]` | JSON，含 `output_file` 路径 |
 | `user-profile` | `--user-id`，`--xsec-token` | JSON（用户信息 + 全部帖子） |
 
 `search-and-fetch` 和 `list-and-fetch` 自动以无头模式运行，无需添加 `--headless`。
